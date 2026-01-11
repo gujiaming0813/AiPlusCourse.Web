@@ -1,0 +1,20 @@
+# 忽略构建输出目录
+dist
+dist-ssr
+
+# 忽略依赖包目录
+node_modules
+
+# 忽略包管理器锁定文件
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# 忽略 Git 目录
+.git
+
+# 忽略日志文件
+*.log
+
+# 忽略本地环境变量文件
+.env.local
