@@ -4,7 +4,6 @@ import {
   MenuUnfoldOutlined,
   UserOutlined,
   DownOutlined,
-  AppstoreOutlined,
   ContainerOutlined,
 } from '@ant-design/icons';
 import { Layout, Button, theme, Menu, Avatar, Dropdown, Space } from 'antd';
@@ -15,21 +14,29 @@ const { Header, Sider, Content } = Layout;
 // 模拟菜单数据
 const items = [
   {
-    key: '/test1',
-    icon: <AppstoreOutlined />,
-    label: '测试 1',
-  },
-  {
     key: '/chat',
     icon: <ContainerOutlined />,
     label: '聊天',
+  },
+  {
+    key: '/business',
+    icon: <ContainerOutlined />,
+    label: '数据',
   },
 ];
 
 const BasicLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate(); // 跳转工具
-  const location = useLocation(); // 获取当前网址
+  const location = useLocation();
+
+  const onMenuClick = ({ key }: { key: string }) => {
+    if (key === 'logout') {
+      // 🔴 退出逻辑
+      localStorage.removeItem('token'); // 清除 Token
+      navigate('/login'); // 跳回登录页
+    }
+  };
 
   const {
     token: { colorBgContainer, borderRadiusLG },
@@ -119,8 +126,9 @@ const BasicLayout: React.FC = () => {
                     { key: '1', label: '个人中心' },
                     { key: '2', label: '系统设置' },
                     { type: 'divider' },
-                    { key: '3', label: '退出登录', danger: true },
+                    { key: 'logout', label: '退出登录', danger: true }, // key 改为 'logout'
                   ],
+                  onClick: onMenuClick, // 绑定点击事件
                 }}
               >
                 <Space style={{ cursor: 'pointer' }}>

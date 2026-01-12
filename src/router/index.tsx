@@ -1,29 +1,38 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import BasicLayout from '../layouts/BasicLayout';
-import Dashboard from '../pages/Dashboard';
 import Business from '../pages/Business';
 import ChatPage from '@/pages/ChatPage.tsx';
+import Login from '@/pages/Login.tsx';
+import AuthGuard from '@/components/AuthGuard.tsx';
 
 const router = createBrowserRouter([
   {
+    path: '/login',
+    element: <Login />,
+  },
+  {
     path: '/',
-    element: <BasicLayout />,
+    element: (
+      <AuthGuard>
+        <BasicLayout />
+      </AuthGuard>
+    ),
     children: [
       {
         path: '/',
-        element: <Navigate to="/test1" replace />,
-      },
-      {
-        path: 'test1',
-        element: <Dashboard />,
-      },
-      {
-        path: 'test2',
-        element: <Business />,
+        element: <Navigate to="/chat" replace />,
       },
       {
         path: 'chat',
         element: <ChatPage />,
+      },
+      // {
+      //   path: 'test1',
+      //   element: <Dashboard />,
+      // },
+      {
+        path: 'business',
+        element: <Business />,
       },
     ],
   },
