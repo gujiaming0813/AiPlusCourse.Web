@@ -116,7 +116,6 @@ const BasicLayout: React.FC = () => {
           {/* 右侧工具栏 */}
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <Space size="large">
-              <span>欢迎，管理员</span>
               {/*<Badge count={5} size="small">*/}
               {/*    <Button type="text" icon={<BellOutlined/>} style={{fontSize: '16px'}}/>*/}
               {/*</Badge>*/}
