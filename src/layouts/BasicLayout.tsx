@@ -120,6 +120,12 @@ const BasicLayout: React.FC = () => {
               <Badge count={5} size="small">
                 <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
               </Badge>
+              <Badge count={5} size="small">
+                <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
+              </Badge>
+              <Badge count={5} size="small">
+                <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
+              </Badge>
 
               <Dropdown
                 menu={{
