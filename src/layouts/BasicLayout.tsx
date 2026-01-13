@@ -126,6 +126,7 @@ const BasicLayout: React.FC = () => {
               <Badge count={5} size="small">
                 <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
               </Badge>
+              <span>测试</span>
 
               <Dropdown
                 menu={{
