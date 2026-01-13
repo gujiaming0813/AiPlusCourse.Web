@@ -5,9 +5,8 @@ import {
   UserOutlined,
   DownOutlined,
   ContainerOutlined,
-  BellOutlined,
 } from '@ant-design/icons';
-import { Layout, Button, theme, Menu, Avatar, Dropdown, Space, Badge } from 'antd';
+import { Layout, Button, theme, Menu, Avatar, Dropdown, Space } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 
 const { Header, Sider, Content } = Layout;
@@ -117,16 +116,7 @@ const BasicLayout: React.FC = () => {
           {/* 右侧工具栏 */}
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <Space size="large">
-              <Badge count={5} size="small">
-                <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
-              </Badge>
-              <Badge count={5} size="small">
-                <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
-              </Badge>
-              <Badge count={5} size="small">
-                <Button type="text" icon={<BellOutlined />} style={{ fontSize: '16px' }} />
-              </Badge>
-              <span>测试</span>
+              <span>测试Cicd是否变更</span>
 
               <Dropdown
                 menu={{
