@@ -14,7 +14,7 @@ const clayCardStyle: React.CSSProperties = {
   borderRadius: '32px',
   background: 'rgba(255, 255, 255, 0.75)', // Semi-transparent white
   backdropFilter: 'blur(24px)', // Strong blur for depth
-  boxShadow: '20px 20px 60px rgba(174, 174, 192, 0.4), -20px -20px 60px rgba(255, 255, 255, 0.8)', // Soft, deep shadow
+  // boxShadow: '20px 20px 60px rgba(174, 174, 192, 0.4), -20px -20px 60px rgba(255, 255, 255, 0.8)', // Soft, deep shadow
   border: '1px solid rgba(255, 255, 255, 0.6)',
   position: 'relative',
   zIndex: 10,

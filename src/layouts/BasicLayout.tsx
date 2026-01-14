@@ -48,12 +48,12 @@ const BasicLayout: React.FC = () => {
   const menuItems = [
     {
       key: '/',
-      icon: <ReadOutlined style={{ fontSize: '22px', color: '#FF9F43' }} />,
+      icon: <ReadOutlined style={{ fontSize: '22px' }} />, // Removed inline color to allow CSS override
       label: <span style={{ fontSize: '16px', fontWeight: 600 }}>学习仪表盘</span>,
     },
     {
       key: '/chat',
-      icon: <RobotOutlined style={{ fontSize: '22px', color: '#54A0FF' }} />,
+      icon: <RobotOutlined style={{ fontSize: '22px' }} />, // Removed inline color to allow CSS override
       label: <span style={{ fontSize: '16px', fontWeight: 600 }}>AI 辅导</span>,
     },
   ];
@@ -66,17 +66,43 @@ const BasicLayout: React.FC = () => {
         .custom-sider-menu .ant-menu-item {
           height: 56px !important;
           line-height: 56px !important;
-          margin-bottom: 24px !important; /* Increased from 12px to 24px */
+          margin-bottom: 8px !important; /* Reduced from 24px to 8px to balance visual spacing */
           border-radius: 16px !important;
           display: flex !important;
           align-items: center !important;
+          color: #57606F !important; /* Default text color */
+        }
+        
+        /* Default Icon Color */
+        .custom-sider-menu .ant-menu-item .anticon {
+          color: #FF9F43; /* Default icon color (Orange) */
+        }
+        
+        /* Specific icon colors for unselected state if needed */
+        .custom-sider-menu .ant-menu-item[data-menu-id*="/chat"] .anticon {
+             color: #54A0FF; /* Blue for AI Tutor when unselected */
+        }
+        .custom-sider-menu .ant-menu-item[data-menu-id*="/"] .anticon {
+             color: #FF9F43; /* Orange for Dashboard when unselected */
         }
 
-        /* Selected State */
+
+        /* Selected State - The "Logo Style" */
         .custom-sider-menu .ant-menu-item-selected {
-          background-color: #F0EBF8 !important;
-          color: #7C5CFF !important;
-          box-shadow: 0 4px 12px rgba(124, 92, 255, 0.15) !important; /* The purple shadow you wanted */
+          background: linear-gradient(135deg, rgb(124, 92, 255) 0%, rgb(93, 63, 211) 100%) !important;
+          color: #fff !important;
+          // box-shadow: 4px 4px 10px rgba(124, 92, 255, 0.3) !important;
+        }
+        
+        /* Force Icon Color to White on Selection */
+        .custom-sider-menu .ant-menu-item-selected .anticon {
+          color: #fff !important;
+        }
+
+        /* Remove hover background color */
+        .custom-sider-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
+          background-color: transparent !important;
+          color: #7C5CFF !important; 
         }
 
         /* Collapsed State Fixes */
@@ -132,15 +158,16 @@ const BasicLayout: React.FC = () => {
             style={{
               width: collapsed ? 50 : '100%',
               height: collapsed ? 50 : '100%',
-              background: 'linear-gradient(135deg, #7C5CFF 0%, #5D3FD3 100%)',
-              borderRadius: '16px',
+              // background: 'linear-gradient(135deg, #7C5CFF 0%, #5D3FD3 100%)',
+              // borderRadius: '16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#fff',
+              // color: '#fff',
+              color: 'rgb(93, 63, 211)',
               fontWeight: 800,
               fontSize: collapsed ? 18 : 22,
-              boxShadow: '4px 4px 10px rgba(124, 92, 255, 0.3)',
+              // boxShadow: '4px 4px 10px rgba(124, 92, 255, 0.3)',
               transition: 'all 0.3s',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
