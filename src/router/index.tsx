@@ -1,8 +1,8 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import BasicLayout from '../layouts/BasicLayout';
-import Business from '../pages/Business';
 import ChatPage from '@/pages/ChatPage.tsx';
 import Login from '@/pages/Login.tsx';
+import Dashboard from '@/pages/Dashboard.tsx';
 import AuthGuard from '@/components/AuthGuard.tsx';
 
 const router = createBrowserRouter([
@@ -20,19 +20,11 @@ const router = createBrowserRouter([
     children: [
       {
         path: '/',
-        element: <Navigate to="/chat" replace />,
+        element: <Dashboard />,
       },
       {
         path: 'chat',
         element: <ChatPage />,
-      },
-      // {
-      //   path: 'test1',
-      //   element: <Dashboard />,
-      // },
-      {
-        path: 'business',
-        element: <Business />,
       },
     ],
   },
