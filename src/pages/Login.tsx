@@ -23,9 +23,9 @@ const clayCardStyle: React.CSSProperties = {
 // 2. The Inputs: "Pressed" into the surface (Neumorphism/Clay hybrid)
 const clayInputStyle: React.CSSProperties = {
   borderRadius: '16px',
-  background: '#F0F2F5', // Slightly darker than card
-  boxShadow:
-    'inset 4px 4px 8px rgba(174, 174, 192, 0.2), inset -4px -4px 8px rgba(255, 255, 255, 0.8)', // Inner shadow
+  background: '#FFFFFF 90%', // Slightly darker than card
+  // boxShadow:
+  //   'inset 4px 4px 8px rgba(174, 174, 192, 0.2), inset -4px -4px 8px rgba(255, 255, 255, 0.8)', // Inner shadow
   border: 'none',
   padding: '12px 16px',
   fontSize: '16px',
