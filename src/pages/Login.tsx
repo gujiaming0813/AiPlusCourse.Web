@@ -48,6 +48,7 @@ const clayButtonStyle: React.CSSProperties = {
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm(); // Use Form instance
 
   const onFinish = (values: LoginInputDto) => {
     setLoading(true);
@@ -72,6 +73,21 @@ const Login: React.FC = () => {
       }
       setLoading(false);
     }, 1000);
+  };
+
+  // Handle Enter key press
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      // Validate fields and submit if valid
+      form
+        .validateFields()
+        .then((values) => {
+          onFinish(values);
+        })
+        .catch(() => {
+          // Validation failed, do nothing (Form will show errors)
+        });
+    }
   };
 
   return (
@@ -141,13 +157,21 @@ const Login: React.FC = () => {
           <Text style={{ color: '#636E72', fontSize: '16px' }}>你的专属 AI 导师已就绪！</Text>
         </div>
 
-        <Form name="login" size="large" onFinish={onFinish} autoComplete="off" layout="vertical">
+        <Form
+          form={form} // Bind form instance
+          name="login"
+          size="large"
+          onFinish={onFinish}
+          autoComplete="off"
+          layout="vertical"
+        >
           <Form.Item name="Account" rules={[{ required: true, message: '请输入学生账号！' }]}>
             <Input
               style={clayInputStyle}
               prefix={<UserOutlined style={{ color: '#B2BEC3', fontSize: 18 }} />}
               placeholder="学生账号"
               variant="borderless"
+              onKeyDown={handleKeyPress} // Add key listener
             />
           </Form.Item>
 
@@ -157,6 +181,7 @@ const Login: React.FC = () => {
               prefix={<LockOutlined style={{ color: '#B2BEC3', fontSize: 18 }} />}
               placeholder="密码"
               variant="borderless"
+              onKeyDown={handleKeyPress} // Add key listener
             />
           </Form.Item>
 

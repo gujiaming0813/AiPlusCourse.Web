@@ -101,8 +101,9 @@ const BasicLayout: React.FC = () => {
 
         /* Remove hover background color */
         .custom-sider-menu .ant-menu-item:hover:not(.ant-menu-item-selected) {
-          background-color: transparent !important;
+          background-color: #EFEBF7 !important;
           color: #7C5CFF !important; 
+          box-shadow: 2px 2px 8px rgba(124, 92, 255, 0.1) !important;-sha
         }
 
         /* Collapsed State Fixes */
