@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Input, Button, Avatar, Card, Spin } from 'antd';
 import { SendOutlined, UserOutlined, RobotOutlined, StopOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import { streamChat } from '@/services/chat';
 
 // const { Text } = Typography;
 
@@ -74,51 +75,56 @@ const ChatArea: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const simulateStreamResponse = (userQuestion: string) => {
+  const handleRealStreamResponse = async (userQuestion: string) => {
     setIsStreaming(true);
     const newAiMsgId = Date.now().toString() + '-ai';
 
+    // 1. 先放一个空的 AI 消息占位
     setMessages((prev) => [
       ...prev,
       {
         id: newAiMsgId,
         role: 'assistant',
         content: '',
-        loading: true,
+        loading: true, // 显示加载转圈
       },
     ]);
 
-    // Mock response content (Chinese)
-    let mockResponse = `收到你的问题：**"${userQuestion}"**。\n\nGemini 的流式响应是基于 **Server-Sent Events (SSE)** 或 **WebSocket** 实现的。\n\n在 React 中，我们通常会：\n1. 发起 Fetch 请求。\n2. 读取 response.body.getReader()\n3. 在循环中解码数据块。\n\n这是一个模拟的打字机效果...`;
-    mockResponse = mockResponse + mockResponse; // Make it longer
-
-    let currentIndex = 0;
-
-    streamInterval.current = window.setInterval(() => {
-      if (currentIndex >= mockResponse.length) {
-        if (streamInterval.current) clearInterval(streamInterval.current);
+    // 2. 调用流式 API
+    await streamChat(
+      userQuestion,
+      (chunk) => {
+        // onChunk: 每收到一点数据，就更新一次 UI
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id === newAiMsgId) {
+              return {
+                ...msg,
+                content: msg.content + chunk, // 追加内容
+                loading: false, // 一旦有内容，就不转圈了
+              };
+            }
+            return msg;
+          }),
+        );
+      },
+      () => {
+        // onDone: 结束
+        setIsStreaming(false);
+      },
+      (error) => {
+        // onError: 报错
+        console.error('Chat error:', error);
         setIsStreaming(false);
         setMessages((prev) =>
-          prev.map((msg) => (msg.id === newAiMsgId ? { ...msg, loading: false } : msg)),
+          prev.map((msg) =>
+            msg.id === newAiMsgId
+              ? { ...msg, content: '⚠️ 网络连接异常，请稍后重试。', loading: false }
+              : msg,
+          ),
         );
-        return;
-      }
-
-      const char = mockResponse[currentIndex];
-      setMessages((prev) =>
-        prev.map((msg) => {
-          if (msg.id === newAiMsgId) {
-            return {
-              ...msg,
-              content: msg.content + char,
-              loading: false,
-            };
-          }
-          return msg;
-        }),
-      );
-      currentIndex++;
-    }, 20); // Faster typing speed
+      },
+    );
   };
 
   const handleSend = () => {
@@ -132,7 +138,8 @@ const ChatArea: React.FC = () => {
     setMessages((prev) => [...prev, userMsg]);
     setInputValue('');
 
-    simulateStreamResponse(inputValue);
+    // 🟢 调用新函数 (原函数 simulateStreamResponse 可以删除了)
+    handleRealStreamResponse(inputValue);
   };
 
   const handleStop = () => {
