@@ -1,4 +1,11 @@
-import React, { useState, useRef, useEffect, type ComponentPropsWithoutRef } from 'react';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useMemo,
+  useCallback,
+  type ComponentPropsWithoutRef,
+} from 'react';
 import { Input, Button, Avatar, Card, Spin, message, Tooltip, Modal, Alert } from 'antd';
 import {
   SendOutlined,
@@ -9,7 +16,6 @@ import {
   CheckOutlined,
   PlayCircleOutlined,
   CodeOutlined,
-  CloseOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
@@ -105,7 +111,13 @@ const CodeRunnerModal = ({
   const [plotImage, setPlotImage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [statusText, setStatusText] = useState('准备就绪');
-  const [isFatalError, setIsFatalError] = useState(false); // 追踪致命错误
+  const [isFatalError, setIsFatalError] = useState(false);
+
+  // 使用 ref 锁定当前运行代码
+  const codeRef = useRef(code);
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
 
   const runPythonCode = async () => {
     setIsLoading(true);
@@ -123,12 +135,11 @@ const CodeRunnerModal = ({
       }
       const pyodide = window.pyodideInstance;
 
-      // 1. 加载库
       setStatusText('正在加载 Numpy/Scipy/Pandas...');
       await pyodide.loadPackage(['numpy', 'matplotlib', 'scipy', 'pandas']);
 
-      // 2. 配置中文字体
       setStatusText('正在配置中文字体 (SimHei)...');
+
       const fontSetupCode = `
 import os
 import matplotlib.pyplot as plt
@@ -166,23 +177,18 @@ except:
 `;
       await pyodide.runPythonAsync(fontSetupCode);
 
-      // 3. 设置输出捕获
       pyodide.setStdout({
         batched: (msg: string) => setLogs((prev) => [...prev, msg]),
       });
 
-      // 4. 🔥 智能注入：预导入常用库，解决 NameError: fft not defined
       const smartImports = `
 import numpy as np
 import pandas as pd
 import scipy
-# 自动导入 FFT 相关函数，防止用户忘记 import 导致报错
 from numpy.fft import fft, ifft, fftfreq, fftshift
-# 导入绘图
 import matplotlib.pyplot as plt
 `;
 
-      // 5. 绘图补丁
       const plotPatch = `
 import io, base64
 def _get_plot_base64():
@@ -193,11 +199,9 @@ def _get_plot_base64():
 plt.clf()
 `;
 
-      // 6. 组合并执行：智能导入 + 绘图补丁 + 用户代码
       setStatusText('正在执行仿真...');
-      await pyodide.runPythonAsync(smartImports + '\n' + plotPatch + '\n' + code);
+      await pyodide.runPythonAsync(smartImports + '\n' + plotPatch + '\n' + codeRef.current);
 
-      // 7. 提取图片
       const hasPlot = pyodide.runPython('len(plt.get_fignums()) > 0');
       if (hasPlot) {
         const base64Img = pyodide.runPython('_get_plot_base64()');
@@ -226,7 +230,6 @@ plt.clf()
     if (isOpen) {
       runPythonCode();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const handleRefresh = () => {
@@ -248,34 +251,35 @@ plt.clf()
       width={800}
       centered
       destroyOnClose
-      footer={[
-        isFatalError ? (
-          <Button
-            key="refresh"
-            type="primary"
-            danger
-            onClick={handleRefresh}
-            icon={<ReloadOutlined />}
-          >
-            刷新页面修复环境
-          </Button>
-        ) : (
-          <Button key="close" onClick={onClose} icon={<CloseOutlined />}>
-            关闭窗口
-          </Button>
-        ),
-      ]}
+      // 🔥 UI 优化：正常情况不显示底部按钮 (null)，只有崩溃时显示刷新按钮
+      footer={
+        isFatalError
+          ? [
+              <Button
+                key="refresh"
+                type="primary"
+                danger
+                onClick={handleRefresh}
+                icon={<ReloadOutlined />}
+              >
+                刷新页面修复环境
+              </Button>,
+            ]
+          : null
+      }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '400px' }}>
+        {/* 致命错误提示 */}
         {isFatalError && (
           <Alert
             message="运行环境崩溃"
-            description="检测到 Pyodide 发生致命错误 (Fatally Failed)。这通常是由于之前的初始化失败导致的。请点击下方的“刷新页面”按钮来重置环境。"
+            description="检测到 Pyodide 发生致命错误 (Fatally Failed)。请点击下方的“刷新页面”按钮来重置环境。"
             type="error"
             showIcon
           />
         )}
 
+        {/* 正常状态提示 */}
         {!isFatalError && isLoading && (
           <Alert message={statusText} type="info" showIcon icon={<Spin />} />
         )}
@@ -344,7 +348,7 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // ignore
+      /* ignore */
     }
   }
   try {
@@ -362,27 +366,31 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
   }
 };
 
-const CodeBlock = ({ language, code }: { language: string; code: string }) => {
-  const [copied, setCopied] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+// CodeBlock 纯展示组件
+const CodeBlock = React.memo(
+  ({
+    language,
+    code,
+    onRun,
+  }: {
+    language: string;
+    code: string;
+    onRun: (code: string) => void;
+  }) => {
+    const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
-    const success = await copyToClipboard(code);
-    if (success) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      message.success('复制成功');
-    } else {
-      message.error('复制失败');
-    }
-  };
+    const handleCopy = async () => {
+      const success = await copyToClipboard(code);
+      if (success) {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        message.success('复制成功');
+      } else {
+        message.error('复制失败');
+      }
+    };
 
-  const handleRun = () => {
-    setIsModalOpen(true);
-  };
-
-  return (
-    <>
+    return (
       <div
         style={{
           borderRadius: '8px',
@@ -425,7 +433,7 @@ const CodeBlock = ({ language, code }: { language: string; code: string }) => {
                   type="text"
                   size="small"
                   icon={<PlayCircleOutlined />}
-                  onClick={handleRun}
+                  onClick={() => onRun(code)}
                   style={{ color: '#4caf50', fontSize: '12px' }}
                 >
                   运行仿真
@@ -452,12 +460,9 @@ const CodeBlock = ({ language, code }: { language: string; code: string }) => {
           {code}
         </SyntaxHighlighter>
       </div>
-      {isModalOpen && (
-        <CodeRunnerModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} code={code} />
-      )}
-    </>
-  );
-};
+    );
+  },
+);
 
 // ImageRenderer
 const ImageRenderer = ({ src, alt, ...props }: ImgComponentProps) => {
@@ -550,6 +555,10 @@ const ChatArea: React.FC = () => {
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
+  // 弹窗状态
+  const [isRunnerOpen, setIsRunnerOpen] = useState(false);
+  const [runnerCode, setRunnerCode] = useState('');
+
   useEffect(() => {
     localStorage.removeItem('chat_session_id');
   }, []);
@@ -559,7 +568,7 @@ const ChatArea: React.FC = () => {
       const userInfoStr = localStorage.getItem('user_info');
       if (userInfoStr) return JSON.parse(userInfoStr)?.level || 1;
     } catch {
-      // ignore
+      /* ignore */
     }
     return 1;
   });
@@ -573,6 +582,30 @@ const ChatArea: React.FC = () => {
     if (success) message.success('已复制全部内容');
     else message.error('复制失败');
   };
+
+  const handleOpenRunner = useCallback((code: string) => {
+    setRunnerCode(code);
+    setIsRunnerOpen(true);
+  }, []);
+
+  const markdownComponents = useMemo(
+    () => ({
+      img: ImageRenderer,
+      code({ inline, className, children, ...props }: CodeComponentProps) {
+        const match = /language-(\w+)/.exec(className || '');
+        const codeString = String(children).replace(/\n$/, '');
+        if (!inline && match) {
+          return <CodeBlock language={match[1]} code={codeString} onRun={handleOpenRunner} />;
+        }
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      },
+    }),
+    [handleOpenRunner],
+  );
 
   const handleRealStreamResponse = async (userQuestion: string) => {
     setIsStreaming(true);
@@ -694,20 +727,7 @@ const ChatArea: React.FC = () => {
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm, remarkMath]}
                           rehypePlugins={[rehypeKatex]}
-                          components={{
-                            img: ImageRenderer,
-                            code({ inline, className, children, ...props }: CodeComponentProps) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              const codeString = String(children).replace(/\n$/, '');
-                              if (!inline && match)
-                                return <CodeBlock language={match[1]} code={codeString} />;
-                              return (
-                                <code className={className} {...props}>
-                                  {children}
-                                </code>
-                              );
-                            },
-                          }}
+                          components={markdownComponents}
                         >
                           {item.content}
                         </ReactMarkdown>
@@ -815,6 +835,12 @@ const ChatArea: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <CodeRunnerModal
+        isOpen={isRunnerOpen}
+        onClose={() => setIsRunnerOpen(false)}
+        code={runnerCode}
+      />
     </div>
   );
 };
