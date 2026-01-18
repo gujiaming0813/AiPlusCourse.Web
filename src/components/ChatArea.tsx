@@ -99,30 +99,40 @@ const copyToClipboard = async (text: string): Promise<boolean> => {
   }
 };
 
-// 🔥 Google Colab 版 CodeBlock
+// 🔥 Google Colab 版 CodeBlock (修复双开页面问题 + 防抖)
 const CodeBlock = ({ language, code }: { language: string; code: string }) => {
   const [copied, setCopied] = useState(false);
-  const handleCopy = async () => {
-    const success = await copyToClipboard(code); // 使用兼容函数
+  // 1. 新增：运行状态锁
+  const [isRunning, setIsRunning] = useState(false);
 
+  // 兼容 HTTP 的复制函数 (保持不变)
+  const handleCopy = async () => {
+    const success = await copyToClipboard(code);
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      // message.success('复制成功'); // (可选：加个提示)
+      message.success('复制成功');
     } else {
       message.error('复制失败，请手动复制');
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
+
   const handleRun = async () => {
-    let finalCode = code;
-    let runMessage = '代码已复制！前往 Google Colab 运行 🚀';
-    const isPythonPlot =
-      language === 'python' && (code.includes('matplotlib') || code.includes('plt.'));
-    const hasChinese = /[\u4e00-\u9fa5]/.test(code);
-    if (isPythonPlot && hasChinese) {
-      const colabPatch = `# 📦 [AI 自动修复] 下载中文字体以解决乱码
+    // 2. 检查：如果正在运行，直接阻止
+    if (isRunning) return;
+
+    // 3. 上锁
+    setIsRunning(true);
+
+    try {
+      let finalCode = code;
+      let runMessage = '代码已复制！前往 Google Colab 运行 🚀';
+      const isPythonPlot =
+        language === 'python' && (code.includes('matplotlib') || code.includes('plt.'));
+      const hasChinese = /[\u4e00-\u9fa5]/.test(code);
+
+      if (isPythonPlot && hasChinese) {
+        const colabPatch = `# 📦 [AI 自动修复] 下载中文字体以解决乱码
 !wget -q https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf -O SimHei.ttf
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -131,20 +141,28 @@ plt.rcParams['font.sans-serif']=['SimHei']
 plt.rcParams['axes.unicode_minus']=False
 # ------------------------------------------------------
 `;
-      finalCode = colabPatch + code;
-      runMessage = '已自动注入中文字体修复补丁 💉，请在 Colab 中粘贴运行！';
-    }
-    const success = await copyToClipboard(finalCode); // 使用兼容函数
+        finalCode = colabPatch + code;
+        runMessage = '已自动注入中文字体修复补丁 💉，请在 Colab 中粘贴运行！';
+      }
 
-    if (success) {
-      message.success(runMessage);
-      window.open('https://colab.research.google.com/#create=true', '_blank');
-    } else {
-      message.error('自动复制失败，请手动复制代码');
+      // 执行复制
+      const success = await copyToClipboard(finalCode);
+
+      if (success) {
+        message.success(runMessage);
+        // 4. 只有在这里打开一次窗口
+        window.open('https://colab.research.google.com/#create=true', '_blank');
+      } else {
+        message.error('自动复制失败，请手动复制代码');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      // 5. 解锁 (无论成功失败，1秒后恢复按钮状态，防止立刻误触)
+      setTimeout(() => setIsRunning(false), 1000);
     }
-    message.success(runMessage);
-    window.open('https://colab.research.google.com/#create=true', '_blank');
   };
+
   return (
     <div
       style={{
@@ -182,11 +200,13 @@ plt.rcParams['axes.unicode_minus']=False
               <Button
                 type="text"
                 size="small"
-                icon={<PlayCircleOutlined />}
+                // 6. 绑定 loading 状态，运行时显示转圈圈
+                loading={isRunning}
+                icon={!isRunning && <PlayCircleOutlined />}
                 onClick={handleRun}
                 style={{ color: '#4caf50', fontSize: '12px' }}
               >
-                复制并前往运行
+                {isRunning ? '跳转中' : '运行'}
               </Button>
             </Tooltip>
           )}
