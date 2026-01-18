@@ -63,6 +63,7 @@ const Login: React.FC = () => {
             name: 'Student Star',
             email: 'student@example.com',
             id: 1001,
+            level: 1,
           }),
         );
 

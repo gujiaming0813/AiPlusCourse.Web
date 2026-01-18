@@ -20,3 +20,135 @@ body {
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* --- Markdown 内容专用样式 --- */
+.markdown-body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: #2d3436;
+}
+
+/* 标题样式增强 */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  font-weight: 700;
+  margin-top: 1.5em;
+  margin-bottom: 0.8em;
+  color: #2c3e50;
+  line-height: 1.4;
+}
+
+.markdown-body h3 {
+  font-size: 1.25em;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 0.3em;
+}
+
+.markdown-body h4 {
+  font-size: 1.1em;
+  color: #546e7a;
+}
+
+/* 列表样式恢复 */
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.5em;
+  margin-bottom: 1em;
+}
+
+.markdown-body li {
+  margin-bottom: 0.4em;
+  line-height: 1.6;
+}
+
+/* 段落间距 */
+.markdown-body p {
+  margin-bottom: 1em;
+  line-height: 1.7;
+}
+
+/* 强调文字 */
+.markdown-body strong {
+  color: #d63031; /* 用深红色强调重点，配合你的教育主题 */
+  font-weight: 700;
+}
+
+/* 代码块背景微调（避免与高亮组件冲突） */
+.markdown-body pre {
+  margin: 1em 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* 行内代码样式 (例如 `code`) */
+.markdown-body code:not([class*='language-']) {
+  background-color: rgba(124, 92, 255, 0.1);
+  color: #7c5cff;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* 引用块 */
+.markdown-body blockquote {
+  border-left: 4px solid #dfe6e9;
+  padding-left: 1em;
+  margin-left: 0;
+  color: #636e72;
+  font-style: italic;
+}
+
+/* --- Markdown 表格专用样式 --- */
+.markdown-body table {
+  width: 100%; /* 让表格撑满容器 */
+  max-width: 100%;
+  border-collapse: collapse; /* 合并边框 */
+  margin: 1.5em 0; /* 上下留出间距 */
+  font-size: 0.95em;
+  overflow-x: auto; /* 手机端支持横向滚动 */
+  display: block; /* 配合 overflow-x 使用 */
+}
+
+/* 表头样式 */
+.markdown-body thead tr {
+  background-color: #f4f5f7; /* 浅灰色背景 */
+  border-bottom: 2px solid #dfe6e9;
+}
+
+.markdown-body th {
+  padding: 12px 15px;
+  font-weight: 700;
+  color: #2d3436;
+  text-align: left;
+  border: 1px solid #dfe6e9;
+  white-space: nowrap; /* 表头不换行 */
+}
+
+/* 单元格样式 */
+.markdown-body td {
+  padding: 10px 15px;
+  border: 1px solid #dfe6e9;
+  color: #636e72;
+  line-height: 1.6;
+}
+
+/* 斑马纹：偶数行颜色变浅，方便阅读 */
+.markdown-body tbody tr:nth-of-type(even) {
+  background-color: #fafbfc;
+}
+
+/* 鼠标悬停高亮 */
+.markdown-body tbody tr:hover {
+  background-color: #f1f2f6;
+  transition: background-color 0.2s;
+}
+
+/* 针对公式在表格中的微调 */
+.markdown-body td .katex {
+  font-size: 1em; /* 防止公式在表格里变得太大或太小 */
+}
