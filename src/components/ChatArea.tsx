@@ -72,15 +72,50 @@ const inputWrapperStyle: React.CSSProperties = {
   transition: 'all 0.3s',
 };
 
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  // 1. 优先尝试现代 API (HTTPS)
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn('Clipboard API error, trying fallback...', err);
+    }
+  }
+  // 2. 降级使用 document.execCommand (HTTP)
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px'; // 移出可视区域
+    document.body.appendChild(textarea);
+    textarea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return successful;
+  } catch (err) {
+    console.log(err);
+    return false;
+  }
+};
+
 // 🔥 Google Colab 版 CodeBlock
 const CodeBlock = ({ language, code }: { language: string; code: string }) => {
   const [copied, setCopied] = useState(false);
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+  const handleCopy = async () => {
+    const success = await copyToClipboard(code); // 使用兼容函数
+
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      // message.success('复制成功'); // (可选：加个提示)
+    } else {
+      message.error('复制失败，请手动复制');
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-  const handleRun = () => {
+  const handleRun = async () => {
     let finalCode = code;
     let runMessage = '代码已复制！前往 Google Colab 运行 🚀';
     const isPythonPlot =
@@ -99,7 +134,14 @@ plt.rcParams['axes.unicode_minus']=False
       finalCode = colabPatch + code;
       runMessage = '已自动注入中文字体修复补丁 💉，请在 Colab 中粘贴运行！';
     }
-    navigator.clipboard.writeText(finalCode);
+    const success = await copyToClipboard(finalCode); // 使用兼容函数
+
+    if (success) {
+      message.success(runMessage);
+      window.open('https://colab.research.google.com/#create=true', '_blank');
+    } else {
+      message.error('自动复制失败，请手动复制代码');
+    }
     message.success(runMessage);
     window.open('https://colab.research.google.com/#create=true', '_blank');
   };
@@ -292,8 +334,14 @@ const ChatArea: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content);
+  const handleCopyMessage = async (content: string) => {
+    const success = await copyToClipboard(content); // 使用兼容函数
+
+    if (success) {
+      message.success('已复制全部内容');
+    } else {
+      message.error('复制失败，请手动选择复制');
+    }
     message.success('已复制全部内容');
   };
 
@@ -509,7 +557,7 @@ const ChatArea: React.FC = () => {
                   handleSend();
                 }
               }}
-              bordered={false}
+              variant="borderless"
               style={{
                 padding: 0,
                 resize: 'none',
