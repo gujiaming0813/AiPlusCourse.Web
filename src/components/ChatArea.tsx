@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, type ComponentPropsWithoutRef } from 'react';
-import { Input, Button, Avatar, Card, Spin, message, Tooltip } from 'antd';
+import { Input, Button, Avatar, Card, Spin, message, Tooltip, Modal, Alert } from 'antd';
 import {
   SendOutlined,
   UserOutlined,
@@ -8,6 +8,9 @@ import {
   CopyOutlined,
   CheckOutlined,
   PlayCircleOutlined,
+  CodeOutlined,
+  CloseOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -36,6 +39,15 @@ type ImgComponentProps = ComponentPropsWithoutRef<'img'> & {
   node?: object;
 };
 
+declare global {
+  interface Window {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    loadPyodide: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pyodideInstance: any;
+  }
+}
+
 // --- 样式定义 ---
 const chatContainerStyle: React.CSSProperties = {
   display: 'flex',
@@ -52,15 +64,10 @@ const messageBubbleStyle = (role: 'user' | 'assistant'): React.CSSProperties => 
   border: 'none',
   boxShadow:
     role === 'user' ? '8px 8px 16px rgba(124, 92, 255, 0.3)' : '8px 8px 16px rgba(0,0,0,0.05)',
-  position: 'relative', // 确保 Card 内部绝对定位正常
+  position: 'relative',
 });
 
-const inputContainerStyle: React.CSSProperties = {
-  flexShrink: 0,
-  padding: '24px 0',
-  zIndex: 10,
-};
-
+const inputContainerStyle: React.CSSProperties = { flexShrink: 0, padding: '24px 0', zIndex: 10 };
 const inputWrapperStyle: React.CSSProperties = {
   border: 'none',
   borderRadius: '24px',
@@ -72,40 +79,293 @@ const inputWrapperStyle: React.CSSProperties = {
   transition: 'all 0.3s',
 };
 
+// 🔥 核心工具：加载 Pyodide CDN
+const loadPyodideScript = async () => {
+  if (window.loadPyodide) return;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
+
+// 🔥 核心组件：CodeRunnerModal
+const CodeRunnerModal = ({
+  isOpen,
+  onClose,
+  code,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  code: string;
+}) => {
+  const [logs, setLogs] = useState<string[]>([]);
+  const [plotImage, setPlotImage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [statusText, setStatusText] = useState('准备就绪');
+  const [isFatalError, setIsFatalError] = useState(false); // 追踪致命错误
+
+  const runPythonCode = async () => {
+    setIsLoading(true);
+    setLogs([]);
+    setPlotImage(null);
+    setIsFatalError(false);
+    setStatusText('正在初始化环境...');
+
+    try {
+      await loadPyodideScript();
+
+      if (!window.pyodideInstance) {
+        setStatusText('正在启动 Python 虚拟机...');
+        window.pyodideInstance = await window.loadPyodide();
+      }
+      const pyodide = window.pyodideInstance;
+
+      // 1. 加载库
+      setStatusText('正在加载 Numpy/Scipy/Pandas...');
+      await pyodide.loadPackage(['numpy', 'matplotlib', 'scipy', 'pandas']);
+
+      // 2. 配置中文字体
+      setStatusText('正在配置中文字体 (SimHei)...');
+      const fontSetupCode = `
+import os
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+from pyodide.http import pyfetch 
+
+font_path = "SimHei.ttf"
+
+async def download_font():
+    if os.path.exists(font_path):
+        return True
+    
+    print("正在下载中文字体...")
+    url = "https://cdn.jsdelivr.net/gh/StellarCN/scp_zh@master/fonts/SimHei.ttf"
+    
+    try:
+        response = await pyfetch(url)
+        if response.status == 200:
+            with open(font_path, "wb") as f:
+                f.write(await response.bytes()) 
+            print("字体下载成功！")
+            return True
+    except Exception as e:
+        print(f"⚠️ 字体下载失败: {str(e)}")
+        return False
+
+await download_font()
+
+try:
+    fm.fontManager.addfont(font_path)
+    plt.rcParams['font.sans-serif']=['SimHei']
+    plt.rcParams['axes.unicode_minus']=False
+except:
+    pass
+`;
+      await pyodide.runPythonAsync(fontSetupCode);
+
+      // 3. 设置输出捕获
+      pyodide.setStdout({
+        batched: (msg: string) => setLogs((prev) => [...prev, msg]),
+      });
+
+      // 4. 🔥 智能注入：预导入常用库，解决 NameError: fft not defined
+      const smartImports = `
+import numpy as np
+import pandas as pd
+import scipy
+# 自动导入 FFT 相关函数，防止用户忘记 import 导致报错
+from numpy.fft import fft, ifft, fftfreq, fftshift
+# 导入绘图
+import matplotlib.pyplot as plt
+`;
+
+      // 5. 绘图补丁
+      const plotPatch = `
+import io, base64
+def _get_plot_base64():
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode('utf-8')
+plt.clf()
+`;
+
+      // 6. 组合并执行：智能导入 + 绘图补丁 + 用户代码
+      setStatusText('正在执行仿真...');
+      await pyodide.runPythonAsync(smartImports + '\n' + plotPatch + '\n' + code);
+
+      // 7. 提取图片
+      const hasPlot = pyodide.runPython('len(plt.get_fignums()) > 0');
+      if (hasPlot) {
+        const base64Img = pyodide.runPython('_get_plot_base64()');
+        setPlotImage(`data:image/png;base64,${base64Img}`);
+      }
+
+      setStatusText('执行完成 ✅');
+    } catch (err) {
+      console.error('Pyodide Error:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+
+      if (errorMsg.includes('fatally failed')) {
+        setIsFatalError(true);
+        setStatusText('❌ 运行环境已崩溃');
+        setLogs((prev) => [...prev, 'Critical Error: Python 虚拟机已崩溃，请刷新页面重试。']);
+      } else {
+        setStatusText('执行出错 ❌');
+        setLogs((prev) => [...prev, `Error: ${errorMsg}`]);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      runPythonCode();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const handleRefresh = () => {
+    window.location.reload();
+  };
+
+  return (
+    <Modal
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CodeOutlined style={{ color: '#1890ff' }} />
+          <span>Python 仿真控制台</span>
+        </div>
+      }
+      open={isOpen}
+      onCancel={onClose}
+      maskClosable={false}
+      keyboard={false}
+      width={800}
+      centered
+      destroyOnClose
+      footer={[
+        isFatalError ? (
+          <Button
+            key="refresh"
+            type="primary"
+            danger
+            onClick={handleRefresh}
+            icon={<ReloadOutlined />}
+          >
+            刷新页面修复环境
+          </Button>
+        ) : (
+          <Button key="close" onClick={onClose} icon={<CloseOutlined />}>
+            关闭窗口
+          </Button>
+        ),
+      ]}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '400px' }}>
+        {isFatalError && (
+          <Alert
+            message="运行环境崩溃"
+            description="检测到 Pyodide 发生致命错误 (Fatally Failed)。这通常是由于之前的初始化失败导致的。请点击下方的“刷新页面”按钮来重置环境。"
+            type="error"
+            showIcon
+          />
+        )}
+
+        {!isFatalError && isLoading && (
+          <Alert message={statusText} type="info" showIcon icon={<Spin />} />
+        )}
+        {!isFatalError && !isLoading && logs.length === 0 && !plotImage && (
+          <Alert message={statusText} type="success" showIcon />
+        )}
+
+        {plotImage && (
+          <div
+            style={{
+              textAlign: 'center',
+              background: '#f5f5f5',
+              padding: '16px',
+              borderRadius: '8px',
+              border: '1px solid #eee',
+            }}
+          >
+            <h4 style={{ margin: '0 0 12px 0', color: '#666' }}>📈 仿真结果视图</h4>
+            <img
+              src={plotImage}
+              alt="Simulation Plot"
+              style={{ maxWidth: '100%', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+            />
+          </div>
+        )}
+
+        <div
+          style={{
+            flex: 1,
+            background: '#1e1e1e',
+            color: '#00ff00',
+            fontFamily: 'monospace',
+            padding: '12px',
+            borderRadius: '8px',
+            overflowY: 'auto',
+            maxHeight: '300px',
+            minHeight: '150px',
+          }}
+        >
+          <div
+            style={{
+              color: '#aaa',
+              borderBottom: '1px solid #333',
+              paddingBottom: '4px',
+              marginBottom: '8px',
+              fontSize: '12px',
+            }}
+          >
+            🖥️ Terminal Output
+          </div>
+          {logs.length === 0 && !isLoading ? (
+            <span style={{ color: '#666' }}>[暂无输出]</span>
+          ) : (
+            logs.map((log, i) => <div key={i}>{log}</div>)
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+// 兼容复制
 const copyToClipboard = async (text: string): Promise<boolean> => {
-  // 1. 优先尝试现代 API (HTTPS)
   if (navigator.clipboard && navigator.clipboard.writeText) {
     try {
       await navigator.clipboard.writeText(text);
       return true;
-    } catch (err) {
-      console.warn('Clipboard API error, trying fallback...', err);
+    } catch {
+      // ignore
     }
   }
-  // 2. 降级使用 document.execCommand (HTTP)
   try {
     const textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.style.position = 'fixed';
-    textarea.style.left = '-9999px'; // 移出可视区域
+    textarea.style.left = '-9999px';
     document.body.appendChild(textarea);
     textarea.select();
     const successful = document.execCommand('copy');
     document.body.removeChild(textarea);
     return successful;
-  } catch (err) {
-    console.log(err);
+  } catch {
     return false;
   }
 };
 
-// 🔥 Google Colab 版 CodeBlock (修复双开页面问题 + 防抖)
 const CodeBlock = ({ language, code }: { language: string; code: string }) => {
   const [copied, setCopied] = useState(false);
-  // 1. 新增：运行状态锁
-  const [isRunning, setIsRunning] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // 兼容 HTTP 的复制函数 (保持不变)
   const handleCopy = async () => {
     const success = await copyToClipboard(code);
     if (success) {
@@ -113,127 +373,93 @@ const CodeBlock = ({ language, code }: { language: string; code: string }) => {
       setTimeout(() => setCopied(false), 2000);
       message.success('复制成功');
     } else {
-      message.error('复制失败，请手动复制');
+      message.error('复制失败');
     }
   };
 
-  const handleRun = async () => {
-    // 2. 检查：如果正在运行，直接阻止
-    if (isRunning) return;
-
-    // 3. 上锁
-    setIsRunning(true);
-
-    try {
-      let finalCode = code;
-      let runMessage = '代码已复制！前往 Google Colab 运行 🚀';
-      const isPythonPlot =
-        language === 'python' && (code.includes('matplotlib') || code.includes('plt.'));
-      const hasChinese = /[\u4e00-\u9fa5]/.test(code);
-
-      if (isPythonPlot && hasChinese) {
-        const colabPatch = `# 📦 [AI 自动修复] 下载中文字体以解决乱码
-!wget -q https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf -O SimHei.ttf
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-mpl.font_manager.fontManager.addfont('SimHei.ttf')
-plt.rcParams['font.sans-serif']=['SimHei']
-plt.rcParams['axes.unicode_minus']=False
-# ------------------------------------------------------
-`;
-        finalCode = colabPatch + code;
-        runMessage = '已自动注入中文字体修复补丁 💉，请在 Colab 中粘贴运行！';
-      }
-
-      // 执行复制
-      const success = await copyToClipboard(finalCode);
-
-      if (success) {
-        message.success(runMessage);
-        // 4. 只有在这里打开一次窗口
-        window.open('https://colab.research.google.com/#create=true', '_blank');
-      } else {
-        message.error('自动复制失败，请手动复制代码');
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      // 5. 解锁 (无论成功失败，1秒后恢复按钮状态，防止立刻误触)
-      setTimeout(() => setIsRunning(false), 1000);
-    }
+  const handleRun = () => {
+    setIsModalOpen(true);
   };
 
   return (
-    <div
-      style={{
-        borderRadius: '8px',
-        overflow: 'hidden',
-        margin: '12px 0',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-      }}
-    >
+    <>
       <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '8px 12px',
-          background: '#1e1e1e',
-          borderBottom: '1px solid #333',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          margin: '12px 0',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ display: 'flex', gap: '6px' }}>
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }} />
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }} />
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }} />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 12px',
+            background: '#1e1e1e',
+            borderBottom: '1px solid #333',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f56' }} />
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffbd2e' }} />
+              <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#27c93f' }} />
+            </div>
+            <span
+              style={{
+                marginLeft: '8px',
+                fontSize: '12px',
+                color: '#999',
+                fontFamily: 'monospace',
+              }}
+            >
+              {language}
+            </span>
           </div>
-          <span
-            style={{ marginLeft: '8px', fontSize: '12px', color: '#999', fontFamily: 'monospace' }}
-          >
-            {language}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {language === 'python' && (
-            <Tooltip title="自动修复中文并跳转 Colab">
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {language === 'python' && (
+              <Tooltip title="在浏览器中运行仿真 (支持中文/Matlab/Scipy)">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<PlayCircleOutlined />}
+                  onClick={handleRun}
+                  style={{ color: '#4caf50', fontSize: '12px' }}
+                >
+                  运行仿真
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip title={copied ? '已复制' : '复制代码'}>
               <Button
                 type="text"
                 size="small"
-                // 6. 绑定 loading 状态，运行时显示转圈圈
-                loading={isRunning}
-                icon={!isRunning && <PlayCircleOutlined />}
-                onClick={handleRun}
-                style={{ color: '#4caf50', fontSize: '12px' }}
-              >
-                {isRunning ? '跳转中' : '运行'}
-              </Button>
+                icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+                onClick={handleCopy}
+                style={{ color: '#fff', fontSize: '12px' }}
+              />
             </Tooltip>
-          )}
-          <Tooltip title={copied ? '已复制' : '复制代码'}>
-            <Button
-              type="text"
-              size="small"
-              icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-              onClick={handleCopy}
-              style={{ color: '#fff', fontSize: '12px' }}
-            />
-          </Tooltip>
+          </div>
         </div>
+        <SyntaxHighlighter
+          style={vscDarkPlus}
+          language={language}
+          PreTag="div"
+          customStyle={{ margin: 0, borderRadius: 0 }}
+        >
+          {code}
+        </SyntaxHighlighter>
       </div>
-      <SyntaxHighlighter
-        style={vscDarkPlus}
-        language={language}
-        PreTag="div"
-        customStyle={{ margin: 0, borderRadius: 0 }}
-      >
-        {code}
-      </SyntaxHighlighter>
-    </div>
+      {isModalOpen && (
+        <CodeRunnerModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} code={code} />
+      )}
+    </>
   );
 };
 
-// 🔥 三态图片组件
+// ImageRenderer
 const ImageRenderer = ({ src, alt, ...props }: ImgComponentProps) => {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   if (status === 'error') {
@@ -321,54 +547,36 @@ const ChatArea: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
-
-  // ✅ 保持：使用 State 管理 SessionId (按照你的要求保留)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
-  // ✅ 保持：Mount 时清除本地存储，防止污染
   useEffect(() => {
     localStorage.removeItem('chat_session_id');
   }, []);
 
-  // 懒初始化用户等级
   const [userLevel] = useState(() => {
     try {
       const userInfoStr = localStorage.getItem('user_info');
-      if (userInfoStr) {
-        const userInfo = JSON.parse(userInfoStr);
-        return userInfo?.level || 1;
-      }
-    } catch (e) {
-      console.warn(`Load user level failed err: ${e}`);
+      if (userInfoStr) return JSON.parse(userInfoStr)?.level || 1;
+    } catch {
+      // ignore
     }
     return 1;
   });
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleCopyMessage = async (content: string) => {
-    const success = await copyToClipboard(content); // 使用兼容函数
-
-    if (success) {
-      message.success('已复制全部内容');
-    } else {
-      message.error('复制失败，请手动选择复制');
-    }
-    message.success('已复制全部内容');
+    const success = await copyToClipboard(content);
+    if (success) message.success('已复制全部内容');
+    else message.error('复制失败');
   };
 
   const handleRealStreamResponse = async (userQuestion: string) => {
     setIsStreaming(true);
     const newAiMsgId = Date.now().toString() + '-ai';
-
     setMessages((prev) => [
       ...prev,
       { id: newAiMsgId, role: 'assistant', content: '', loading: true },
@@ -377,7 +585,6 @@ const ChatArea: React.FC = () => {
     try {
       await streamChat({
         message: userQuestion,
-        // ✅ 保持：传入 State 中的 sessionId
         sessionId: currentSessionId,
         userLevel: userLevel,
         onChunk: (chunk) => {
@@ -391,7 +598,7 @@ const ChatArea: React.FC = () => {
         },
         onDone: () => setIsStreaming(false),
         onError: (error) => {
-          console.error('Stream error:', error);
+          console.error(error);
           setIsStreaming(false);
           setMessages((prev) =>
             prev.map((msg) =>
@@ -401,13 +608,10 @@ const ChatArea: React.FC = () => {
             ),
           );
         },
-        // ✅ 保持：接收并更新 State
-        onSessionIdReceived: (newId) => {
-          setCurrentSessionId(newId);
-        },
+        onSessionIdReceived: (newId) => setCurrentSessionId(newId),
       });
     } catch (err) {
-      console.error('Request failed', err);
+      console.error(err);
       setIsStreaming(false);
     }
   };
@@ -423,7 +627,6 @@ const ChatArea: React.FC = () => {
     setInputValue('');
     handleRealStreamResponse(inputValue);
   };
-
   const handleStop = () => {
     setIsStreaming(false);
     message.info('已停止生成');
@@ -443,7 +646,6 @@ const ChatArea: React.FC = () => {
                 gap: 16,
                 alignItems: 'flex-start',
               }}
-              // 交互：在最外层容器监听悬停
               onMouseEnter={() => setHoveredMessageId(item.id)}
               onMouseLeave={() => setHoveredMessageId(null)}
             >
@@ -479,17 +681,10 @@ const ChatArea: React.FC = () => {
                 >
                   {item.role === 'user' ? '你' : 'AI 导师'}
                 </div>
-
                 <Card
                   size="small"
                   style={messageBubbleStyle(item.role)}
-                  styles={{
-                    body: {
-                      // 🔥 UI 修复 1：底部增加 padding，避免按钮挡住文字
-                      padding: '20px 28px 32px 28px',
-                      position: 'relative', // 确保按钮相对于 Card 内部定位
-                    },
-                  }}
+                  styles={{ body: { padding: '20px 28px 32px 28px', position: 'relative' } }}
                 >
                   {item.loading && !item.content ? (
                     <Spin size="small" />
@@ -521,17 +716,8 @@ const ChatArea: React.FC = () => {
                       )}
                     </div>
                   )}
-
-                  {/* 🔥 UI 修复 2：复制按钮内嵌到 Card 右下角 */}
                   {hoveredMessageId === item.id && !item.loading && item.content && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: '6px', // 紧贴底部
-                        right: '8px', // 紧贴右侧
-                        zIndex: 10,
-                      }}
-                    >
+                    <div style={{ position: 'absolute', bottom: '6px', right: '8px', zIndex: 10 }}>
                       <Tooltip title="复制全部内容" placement="left">
                         <Button
                           type="text"
@@ -548,7 +734,7 @@ const ChatArea: React.FC = () => {
                               item.role === 'user' ? 'rgba(0,0,0,0.1)' : 'rgba(240,240,240,0.5)',
                             borderRadius: '4px',
                             padding: '0 8px',
-                            height: '24px', // 横向按钮高度
+                            height: '24px',
                           }}
                         >
                           复制
