@@ -6,7 +6,19 @@ import React, {
   useCallback,
   type ComponentPropsWithoutRef,
 } from 'react';
-import { Input, Button, Avatar, Card, Spin, message, Tooltip, Modal, Alert } from 'antd';
+import {
+  Input,
+  Button,
+  Avatar,
+  Card,
+  Spin,
+  message,
+  Tooltip,
+  Modal,
+  Alert,
+  Collapse,
+  theme,
+} from 'antd';
 import {
   SendOutlined,
   UserOutlined,
@@ -17,6 +29,8 @@ import {
   PlayCircleOutlined,
   CodeOutlined,
   ReloadOutlined,
+  CaretRightOutlined, // 🆕 新增图标
+  BulbOutlined, // 🆕 新增图标
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -33,6 +47,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  thought?: string; // 🆕 新增：思考过程字段
   loading?: boolean;
 }
 
@@ -85,6 +100,64 @@ const inputWrapperStyle: React.CSSProperties = {
   transition: 'all 0.3s',
 };
 
+// 🔥 🆕 组件：深度思考过程展示
+const ThinkProcess = ({ content, isStreaming }: { content: string; isStreaming?: boolean }) => {
+  const { token } = theme.useToken();
+
+  if (!content) return null;
+
+  return (
+    <div style={{ marginBottom: '12px' }}>
+      <Collapse
+        ghost
+        size="small"
+        items={[
+          {
+            key: '1',
+            label: (
+              <span
+                style={{
+                  color: token.colorTextDescription,
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isStreaming ? <Spin size="small" /> : <BulbOutlined />}
+                深度思考过程
+                <span style={{ opacity: 0.6 }}>({content.length} 字)</span>
+              </span>
+            ),
+            children: (
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: '#666',
+                  borderLeft: '3px solid #e0e0e0',
+                  paddingLeft: '12px',
+                  marginLeft: '4px',
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: '1.6',
+                  fontFamily: 'sans-serif',
+                }}
+              >
+                {content}
+              </div>
+            ),
+          },
+        ]}
+        expandIcon={({ isActive }) => (
+          <CaretRightOutlined
+            rotate={isActive ? 90 : 0}
+            style={{ fontSize: '12px', color: '#999' }}
+          />
+        )}
+      />
+    </div>
+  );
+};
+
 // 🔥 核心工具：加载 Pyodide CDN
 const loadPyodideScript = async () => {
   if (window.loadPyodide) return;
@@ -113,7 +186,6 @@ const CodeRunnerModal = ({
   const [statusText, setStatusText] = useState('准备就绪');
   const [isFatalError, setIsFatalError] = useState(false);
 
-  // 使用 ref 锁定当前运行代码
   const codeRef = useRef(code);
   useEffect(() => {
     codeRef.current = code;
@@ -251,7 +323,6 @@ plt.clf()
       width={800}
       centered
       destroyOnClose
-      // 🔥 UI 优化：正常情况不显示底部按钮 (null)，只有崩溃时显示刷新按钮
       footer={
         isFatalError
           ? [
@@ -269,7 +340,6 @@ plt.clf()
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '400px' }}>
-        {/* 致命错误提示 */}
         {isFatalError && (
           <Alert
             message="运行环境崩溃"
@@ -279,7 +349,6 @@ plt.clf()
           />
         )}
 
-        {/* 正常状态提示 */}
         {!isFatalError && isLoading && (
           <Alert message={statusText} type="info" showIcon icon={<Spin />} />
         )}
@@ -610,9 +679,11 @@ const ChatArea: React.FC = () => {
   const handleRealStreamResponse = async (userQuestion: string) => {
     setIsStreaming(true);
     const newAiMsgId = Date.now().toString() + '-ai';
+
+    // 初始化消息，包含 thought 字段
     setMessages((prev) => [
       ...prev,
-      { id: newAiMsgId, role: 'assistant', content: '', loading: true },
+      { id: newAiMsgId, role: 'assistant', content: '', thought: '', loading: true },
     ]);
 
     try {
@@ -620,11 +691,22 @@ const ChatArea: React.FC = () => {
         message: userQuestion,
         sessionId: currentSessionId,
         userLevel: userLevel,
+        // 处理正文流
         onChunk: (chunk) => {
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === newAiMsgId
                 ? { ...msg, content: msg.content + chunk, loading: false }
+                : msg,
+            ),
+          );
+        },
+        // 🆕 处理思考流
+        onThought: (chunk) => {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === newAiMsgId
+                ? { ...msg, thought: (msg.thought || '') + chunk, loading: true }
                 : msg,
             ),
           );
@@ -719,10 +801,15 @@ const ChatArea: React.FC = () => {
                   style={messageBubbleStyle(item.role)}
                   styles={{ body: { padding: '20px 28px 32px 28px', position: 'relative' } }}
                 >
-                  {item.loading && !item.content ? (
+                  {item.loading && !item.content && !item.thought ? (
                     <Spin size="small" />
                   ) : (
                     <div className="markdown-body">
+                      {/* 🆕 渲染思考过程 (仅对 Assistant 且内容不为空时) */}
+                      {item.role === 'assistant' && item.thought && (
+                        <ThinkProcess content={item.thought} isStreaming={item.loading} />
+                      )}
+
                       {item.role === 'assistant' ? (
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm, remarkMath]}
@@ -732,7 +819,9 @@ const ChatArea: React.FC = () => {
                           {item.content}
                         </ReactMarkdown>
                       ) : (
-                        <span style={{ whiteSpace: 'pre-wrap' }}>{item.content}</span>
+                        <span style={{ whiteSpace: 'pre-wrap', color: '#fff' }}>
+                          {item.content}
+                        </span>
                       )}
                     </div>
                   )}
